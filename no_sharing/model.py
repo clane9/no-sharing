@@ -34,7 +34,7 @@ class Pool(nn.Module):
         return x
 
     def extra_repr(self) -> str:
-        return f"height={self.height}, dropout={self.dropout}"
+        return f"height={self.height}"
 
 
 class MultiLinear(nn.Module):
