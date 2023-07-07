@@ -102,4 +102,4 @@ class WiringCost(nn.Module):
         return loss
 
     def extra_repr(self) -> str:
-        return f"height={self.height}, lambd={self.lambd}, squ"
+        return f"height={self.height}, lambd={self.lambd}"
