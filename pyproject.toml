@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "no-sharing"
+version = "0.1.0"
+description = ""
+authors = ["Connor Lane <connor.lane858@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "no_sharing"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2.0.1"
+numpy = "^1.25.0"
+torchvision = "^0.15.2"
+ipython = "^8.14.0"
+timm = "^0.9.2"
+pre-commit = "^3.3.3"
+
+[tool.black]
+line-length = 88
+target_version = ['py310']
+
+[tool.isort]
+profile = "black"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
