@@ -93,6 +93,8 @@ class WiringCost(nn.Module):
 
         # euclidean distance weights, shape (height^2, height^2)
         dist = distance_weights(height)
+        # normalize to a unit box
+        dist = dist / height
         if squared:
             dist = dist.square()
         self.dist: torch.Tensor
@@ -100,7 +102,7 @@ class WiringCost(nn.Module):
 
     def forward(self, weight: torch.Tensor) -> torch.Tensor:
         assert weight.shape[-2:] == (self.height**2, self.height**2)
-        loss = torch.sum(weight.abs() * self.dist)
+        loss = self.lambd * torch.sum(weight.abs() * self.dist)
         return loss
 
     def extra_repr(self) -> str:
