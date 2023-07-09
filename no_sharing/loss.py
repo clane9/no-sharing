@@ -77,27 +77,31 @@ class LocalInfoNCELoss(nn.Module):
 
 class WiringCost(nn.Module):
     """
-    An L2 weight decay penalty weighted by the wiring distance on a grid.
+    An L1 penalty weighted by the wiring distance on a grid.
     """
 
     def __init__(
         self,
         height: int,
         lambd: float = 1.0,
+        squared: bool = False,
     ):
         super().__init__()
         self.height = height
         self.lambd = lambd
+        self.squared = squared
 
         # euclidean distance weights, shape (height^2, height^2)
         dist = distance_weights(height)
+        if squared:
+            dist = dist.square()
         self.dist: torch.Tensor
         self.register_buffer("dist", dist)
 
     def forward(self, weight: torch.Tensor) -> torch.Tensor:
         assert weight.shape[-2:] == (self.height**2, self.height**2)
-        loss = torch.sum(weight.square() * self.dist)
+        loss = torch.sum(weight.abs() * self.dist)
         return loss
 
     def extra_repr(self) -> str:
-        return f"height={self.height}, lambd={self.lambd}"
+        return f"height={self.height}, lambd={self.lambd}, squared={self.squared}"
