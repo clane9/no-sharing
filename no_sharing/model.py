@@ -2,6 +2,7 @@ import math
 from typing import Callable, Optional
 
 import torch
+import torch.nn.functional as F
 from timm.layers import DropPath, PatchEmbed
 from torch import nn
 
@@ -10,34 +11,75 @@ from .loss import LocalInfoNCELoss, WiringCost
 Layer = Callable[..., nn.Module]
 
 
-class Pool(nn.Module):
+class ColumnAttention(nn.Module):
     """
-    Learned spatial pooling over a grid of feature columns.
+    Spatial plus content attention over a grid of feature columns.
+
+    Each column learns an independent constant query for selecting relevant content, as
+    well as a spatial receptive field bias. The final attention mask is computed as::
+
+        softmax(query @ input.T + bias)
     """
 
-    def __init__(self, height: int, drop: float = 0.0):
+    def __init__(
+        self,
+        height: int,
+        dim: int,
+        drop: float = 0.0,
+        attn: bool = True,
+        bias: bool = True,
+    ):
+        assert attn or bias, "at least one of attn or bias required"
+
         super().__init__()
         self.height = height
+        self.dim = dim
+
+        # learned query for content attention
+        # TODO: more than one query i.e. head?
+        if attn:
+            self.query = nn.Parameter(torch.empty(height**2, dim))
+        else:
+            self.register_parameter("query", None)
+
+        # learned spatial attention bias
+        if bias:
+            self.bias = nn.Parameter(torch.empty(height**2, height**2))
+        else:
+            self.register_parameter("bias", None)
 
         self.drop = nn.Dropout(drop)
-        self.weight = nn.Parameter(torch.empty(height**2, height**2))
         self.reset_parameters()
 
     def reset_parameters(self):
-        # copied from nn.Linear
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.query is not None:
+            bound = 1 / math.sqrt(self.dim)
+            nn.init.uniform_(self.query, -bound, bound)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (N, L, C)
-        # output: (N, L, C)
+    def forward(self, x: torch.Tensor, return_attention: bool = False) -> torch.Tensor:
+        N, L, _ = x.shape
 
-        # TODO: dropout on weight or x? On weight is more like attention dropout.
-        # Effectively results in a different dropout pattern for each column.
-        x = torch.matmul(self.drop(self.weight), x)
+        attn = 0
+        if self.query is not None:
+            attn = self.query @ x.transpose(-2, -1)
+        if self.bias is not None:
+            attn = attn + self.bias
+
+        assert attn.shape == (N, L, L)
+        attn = F.softmax(attn, dim=-1)
+
+        x = self.drop(attn) @ x
+        if return_attention:
+            return x, attn
         return x
 
     def extra_repr(self) -> str:
-        return f"height={self.height}"
+        return (
+            f"height={self.height}, dim={self.dim}, "
+            f"attn={self.query is not None}, bias={self.bias is not None}"
+        )
 
 
 class MultiLinear(nn.Module):
@@ -126,12 +168,12 @@ class ColumnMlp(nn.Module):
 
 class Block(nn.Module):
     """
-    A network block consisting of learned spatial pooling and per-column MLP.
+    A network block consisting of column-wise independent attention and MLP.
 
     The expected input is a grid of feature columns, shape `(batch_size, height^2, dim)`.
 
-    Also defines a loss consisting of a wiring cost for the spatial pooling maps, and a
-    local contrastive loss to promote a smooth representation map.
+    Also defines a loss consisting of a wiring cost for the attention maps, and a local
+    contrastive loss to promote a smooth representation map.
     """
 
     def __init__(
@@ -139,10 +181,12 @@ class Block(nn.Module):
         height: int,
         dim: int,
         mlp_ratio: 1 / 8.0,
-        pool_drop: float = 0.0,
+        attn_drop: float = 0.0,
         proj_drop: float = 0.0,
         drop_path: float = 0.0,
         act_layer: Layer = nn.GELU,
+        content_attn: bool = True,
+        spatial_bias: bool = True,
         wiring_lambd: float = 1.0,
         contrast_simga: float = 2.0,
         detach: bool = False,
@@ -152,40 +196,57 @@ class Block(nn.Module):
         self.dim = dim
         self.detach = detach
 
-        self.pool = Pool(height, dropout=pool_drop)
+        # Don't want to share weights across the grid, so no affine params
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False)
+        self.attn = ColumnAttention(
+            height=height,
+            dim=dim,
+            drop=attn_drop,
+            attn=content_attn,
+            bias=spatial_bias,
+        )
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False)
         self.mlp = ColumnMlp(
-            height,
+            height=height,
             in_features=dim,
             hidden_features=int(dim * mlp_ratio),
             out_features=dim,
             act_layer=act_layer,
-            dropout=proj_drop,
+            drop=proj_drop,
         )
-        # Don't want to share weights across the grid, so no affine params
-        self.norm = nn.LayerNorm(dim, elementwise_affine=False)
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.cost = WiringCost(height, lambd=wiring_lambd)
         self.criterion = LocalInfoNCELoss(height, sigma=contrast_simga)
+
+        self._attn_map: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Don't backprop to earlier layers
         if self.detach:
             x = x.detach()
-        y = self.pool(x)
+
+        y = self.norm1(x)
+        y, attn = self.attn(y, return_attention=True)
+        x = x + self.drop_path1(y)
+
+        y = self.norm2(x)
         y = self.mlp(y)
-        y = self.norm(y)
-        # TODO: compare this with typical vision transformer forward which has two
-        # residual connections and two drop paths.
-        y = x + self.drop_path(y)
-        self._output = y
-        return y
+        x = x + self.drop_path2(y)
+
+        self._attn_map = attn
+        self._output = x
+        return x
 
     def loss(self) -> torch.Tensor:
+        assert self._attn_map is not None
         assert self._output is not None
 
-        loss = self.cost(self.pool.weight) + self.criterion(self._output)
+        loss = self.cost(self._attn_map) + self.criterion(self._output)
+        self._attn_map = None
         self._output = None
         return loss
 
@@ -198,6 +259,9 @@ class Mapformer(nn.Module):
     A brain-inspired topographic vision model with learned contrastive weight sharing.
 
     Patterned after the vision transformer in timm.
+
+    Inspired by comments from Geoff Hinton on the Robot Brains podcast and recent work
+    on topographic deep networks.
     """
 
     def __init__(
