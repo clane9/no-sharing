@@ -30,6 +30,9 @@ class Pool(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (N, L, C)
         # output: (N, L, C)
+
+        # TODO: dropout on weight or x? On weight is more like attention dropout.
+        # Effectively results in a different dropout pattern for each column.
         x = torch.matmul(self.drop(self.weight), x)
         return x
 
@@ -158,7 +161,7 @@ class Block(nn.Module):
             act_layer=act_layer,
             dropout=proj_drop,
         )
-        # Don't want to share weights across the grid, so no afine params
+        # Don't want to share weights across the grid, so no affine params
         self.norm = nn.LayerNorm(dim, elementwise_affine=False)
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
@@ -173,6 +176,8 @@ class Block(nn.Module):
         y = self.pool(x)
         y = self.mlp(y)
         y = self.norm(y)
+        # TODO: compare this with typical vision transformer forward which has two
+        # residual connections and two drop paths.
         y = x + self.drop_path(y)
         self._output = y
         return y

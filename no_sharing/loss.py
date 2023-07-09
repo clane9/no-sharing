@@ -23,8 +23,6 @@ class LocalInfoNCELoss(nn.Module):
         self.temperature = temperature
         self.num_negative = num_negative
 
-        self.criterion = nn.CrossEntropyLoss()
-
         # Gaussian neighborhood weights, shape (height^2, height^2)
         dist = distance_weights(height)
         weight = -(0.5 / sigma**2) * dist.square()
@@ -49,8 +47,8 @@ class LocalInfoNCELoss(nn.Module):
         # its neighbors.
         # (N, L, C)
         target = torch.matmul(self.weight, embedding)
-        # (N, L)
-        sim_pos = torch.sum(embedding * target, dim=-1)
+        # (N, L, 1)
+        sim_pos = torch.sum(embedding * target, dim=2, keepdim=True)
 
         # Negative similarity: Random sample of embeddings from the full batch.
         # Should hopefully prevent collapse.
@@ -63,11 +61,11 @@ class LocalInfoNCELoss(nn.Module):
         # (N, L, num_neg)
         sim_neg = torch.matmul(embedding, negatives.t())
 
-        logits = torch.cat([sim_pos[..., None], sim_neg], dim=2)
+        logits = torch.cat([sim_pos, sim_neg], dim=2)
         logits = logits.view(N * L, 1 + self.num_negative)
         target = torch.zeros(N * L, dtype=torch.int64, device=device)
 
-        loss = self.criterion(logits, target)
+        loss = F.cross_entropy(logits, target)
         return loss
 
     def extra_repr(self) -> str:
