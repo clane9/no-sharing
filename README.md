@@ -18,4 +18,6 @@ Doshi, Fenil R., and Talia Konkle. [Cortical topographic motifs emerge in a self
 
 Margalit, Eshed, et al. [A Unifying Principle for the Functional Organization of Visual Cortex.](https://www.biorxiv.org/content/10.1101/2023.05.18.541361v1) bioRxiv (2023).
 
+Pogodin, Roman, et al. [Towards biologically plausible convolutional networks.](https://proceedings.neurips.cc/paper/2021/hash/746b02b6680562f44ad7526675bac026-Abstract.html) NeurIPS (2021).
+
 Xiong, Yuwen, Mengye Ren, and Raquel Urtasun. [Loco: Local contrastive representation learning.](https://proceedings.neurips.cc/paper/2020/hash/7fa215c9efebb3811a7ef58409907899-Abstract.html) NeurIPS (2020).
