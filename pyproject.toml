@@ -16,12 +16,19 @@ ipython = "^8.14.0"
 timm = "^0.9.2"
 pre-commit = "^3.3.3"
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+
 [tool.black]
 line-length = 88
 target_version = ['py310']
 
 [tool.isort]
 profile = "black"
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "DEBUG"
 
 [build-system]
 requires = ["poetry-core"]
