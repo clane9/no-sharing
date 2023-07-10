@@ -20,11 +20,10 @@ def distance_weights(
 
 
 def random_sample(
-    size: int, num_samples: int, device: Optional[torch.device] = None
+    size: int, max_samples: int, device: Optional[torch.device] = None
 ) -> torch.Tensor:
     """
-    Generate a random sample without replacement. Returns a tensor shape (num_samples,).
+    Generate a random sample without replacement. Returns a tensor shape (max_samples,).
     """
-    x = torch.rand(size, device=device)
-    _, indices = torch.topk(x, num_samples, sorted=False)
+    indices = torch.randperm(size, device=device)[:max_samples]
     return indices

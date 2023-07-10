@@ -55,6 +55,9 @@ class ColumnAttention(nn.Module):
         if self.query is not None:
             bound = 1 / math.sqrt(self.dim)
             nn.init.uniform_(self.query, -bound, bound)
+
+        # TODO: initialize with a local attention bias? Would probably help the initial
+        # loss be not so large.
         if self.bias is not None:
             nn.init.zeros_(self.bias)
 
@@ -188,7 +191,7 @@ class Block(nn.Module):
         content_attn: bool = True,
         spatial_bias: bool = True,
         wiring_lambd: float = 1.0,
-        contrast_simga: float = 2.0,
+        contrast_sigma: float = 2.0,
         detach: bool = False,
     ):
         super().__init__()
@@ -219,7 +222,7 @@ class Block(nn.Module):
         self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.cost = WiringCost(height, lambd=wiring_lambd)
-        self.criterion = LocalInfoNCELoss(height, sigma=contrast_simga)
+        self.criterion = LocalInfoNCELoss(height, sigma=contrast_sigma)
 
         self._attn_map: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
@@ -269,16 +272,18 @@ class Mapformer(nn.Module):
         img_size: int = 384,
         patch_size: int = 16,
         in_chans: int = 3,
-        embed_dim: int = 512,
+        embed_dim: int = 256,
         depth: int = 12,
         mlp_ratio: float = 1 / 8.0,
-        pool_drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
         proj_drop_rate: float = 0.0,
         drop_path_rate: float = 0.0,
         act_layer: Layer = nn.GELU,
+        content_attn: bool = True,
+        spatial_bias: bool = True,
         wiring_lambd: float = 1.0,
         contrast_sigma: float = 2.0,
-        detach: bool = False,
+        layerwise: bool = False,
     ):
         super().__init__()
 
@@ -300,13 +305,15 @@ class Mapformer(nn.Module):
                     height=height,
                     dim=embed_dim,
                     mlp_ratio=mlp_ratio,
-                    pool_drop=pool_drop_rate,
+                    attn_drop=attn_drop_rate,
                     proj_drop=proj_drop_rate,
                     drop_path=dpr[ii],
                     act_layer=act_layer,
+                    content_attn=content_attn,
+                    spatial_bias=spatial_bias,
                     wiring_lambd=wiring_lambd,
                     contrast_sigma=contrast_sigma,
-                    detach=(detach and ii > 0),
+                    detach=(layerwise and ii > 0),
                 )
                 for ii in range(depth)
             ]
