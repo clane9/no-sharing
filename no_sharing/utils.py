@@ -27,13 +27,3 @@ def distance_weights(
     # (height^2, in_height^2)
     dist = torch.cdist(coord, coord_in)
     return dist
-
-
-def random_sample(
-    size: int, max_samples: int, device: Optional[torch.device] = None
-) -> torch.Tensor:
-    """
-    Generate a random sample without replacement. Returns a tensor shape (max_samples,).
-    """
-    indices = torch.randperm(size, device=device)[:max_samples]
-    return indices

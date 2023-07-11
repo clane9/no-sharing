@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .utils import distance_weights, random_sample
+from .utils import distance_weights
 
 
 class LocalInfoNCELoss(nn.Module):
@@ -65,9 +65,7 @@ class LocalInfoNCELoss(nn.Module):
         # the neighborhood. But not sure I want to enforce contrast within the map.
         # TODO: for some reason the embedding is not contiguous. Figure out why.
         flattened = embedding.reshape(-1, C)
-        neg_indices = random_sample(
-            size=N * L, max_samples=self.num_negative, device=device
-        )
+        neg_indices = torch.randperm(N * L, device=device)[: self.num_negative]
         # (num_neg, C)
         negatives = flattened[neg_indices]
         # (N, L, num_neg)
