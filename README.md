@@ -1,14 +1,12 @@
 # No sharing
 
-> Work in progress
+> Work in progress, feedback welcome!
 
 A brain-inspired topographic vision model with learned contrastive weight sharing.
 
-Popular vision models like convnets and transformers use weight sharing to conserve parameters and add inductive bias. However, strict weight sharing is biologically implausible. Here, we instead aim to *learn* to share weights by promoting smooth representation maps over a grid of feature columns.
+Popular vision models like convnets and transformers use weight sharing to conserve parameters and add inductive bias. However, strict weight sharing is biologically implausible. Here, we instead aim to *learn* to share weights by promoting local connections and smooth representation maps over a grid of feature columns.
 
-As a complement, we also penalize the wiring cost for long-range connections within the grid.
-
-Finally, we evaluate the importance of long-range backpropagation by comparing the performance of the learned representations under end-to-end vs layerwise learning (using stop-grad operations between network blocks).
+A goal of this work is to explore how topographic visual representations can emerge during learning. Two hallmarks of the primate visual system are retinotopy in early visual cortex and category selectivity in higher visual areas. Arguably, today's standard architectures are unable to fully model this transition. Strict weight sharing guarantees a uniform representation map at each layer of the network. By promoting smooth but not necessarily uniform representations, we may start to see these distinct visual pathways emerge.
 
 ## Inspiration
 
