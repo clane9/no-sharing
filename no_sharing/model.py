@@ -25,6 +25,7 @@ class ColumnAttention(nn.Module):
         self,
         height: int,
         dim: int,
+        in_height: Optional[int] = None,
         drop: float = 0.0,
         attn: bool = True,
         bias: bool = True,
@@ -34,6 +35,7 @@ class ColumnAttention(nn.Module):
         super().__init__()
         self.height = height
         self.dim = dim
+        self.in_height = in_height or height
 
         # learned query for content attention
         # TODO: more than one query i.e. head?
@@ -44,7 +46,7 @@ class ColumnAttention(nn.Module):
 
         # learned spatial attention bias
         if bias:
-            self.bias = nn.Parameter(torch.empty(height**2, height**2))
+            self.bias = nn.Parameter(torch.empty(height**2, self.in_height**2))
         else:
             self.register_parameter("bias", None)
 
@@ -62,15 +64,12 @@ class ColumnAttention(nn.Module):
             nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor, return_attention: bool = False) -> torch.Tensor:
-        N, L, _ = x.shape
-
         attn = 0
         if self.query is not None:
             attn = self.query @ x.transpose(-2, -1)
         if self.bias is not None:
             attn = attn + self.bias
 
-        assert attn.shape == (N, L, L)
         attn = F.softmax(attn, dim=-1)
 
         x = self.drop(attn) @ x
@@ -80,7 +79,7 @@ class ColumnAttention(nn.Module):
 
     def extra_repr(self) -> str:
         return (
-            f"height={self.height}, dim={self.dim}, "
+            f"height={self.height}, dim={self.dim}, in_height={self.in_height}, "
             f"attn={self.query is not None}, bias={self.bias is not None}"
         )
 
