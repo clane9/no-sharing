@@ -1,8 +1,8 @@
 # No sharing
 
-> Work in progress, feedback welcome!
+> Work in progress, just for fun. Feedback and contributions welcome!
 
-A brain-inspired topographic vision model with learned contrastive weight sharing.
+A brain-inspired topographic vision model without weight sharing.
 
 Popular vision models like convnets and transformers use weight sharing to conserve parameters and add inductive bias. However, strict weight sharing is biologically implausible. Here, we instead aim to *learn* to share weights by promoting local connections and smooth representation maps over a grid of feature columns.
 
