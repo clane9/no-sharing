@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -256,6 +256,67 @@ class Block(nn.Module):
         return f"detach={self.detach}"
 
 
+class FactorLinear2D(nn.Module):
+    """
+    A linear layer for 2D tensor input features where the feature weight for each output
+    component is factorized as a rank-one tensor. I.e., each input dimension is
+    projected independently.
+
+    Args:
+        in_shape: input feature shape, (T, C)
+        out_features: output feature dimension K
+        bias: with bias
+
+    Shape:
+        input: (N, T, C)
+        output: (N, K)
+    """
+
+    def __init__(
+        self,
+        in_shape: Tuple[int, int],
+        out_features: int,
+        bias: bool = True,
+    ):
+        super().__init__()
+        self.in_shape = in_shape
+        self.out_features = out_features
+
+        T, C = in_shape
+        self.weight1 = nn.Parameter(torch.empty((out_features, T)))
+        self.weight2 = nn.Parameter(torch.empty((out_features, C)))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(out_features))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        # Copied from nn.Linear, except for the bias init which is copied from
+        # batchnorm.
+        nn.init.kaiming_uniform_(self.weight1, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.weight2, a=math.sqrt(5))
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x: torch.Tensor):
+        # We could use einsum here, but it takes more memory due to broadcasting
+        # (N, T, K)
+        x = torch.matmul(x, self.weight2.t())
+        # (N, K)
+        x = torch.sum(x * self.weight1.t(), dim=-2)
+
+        if self.bias is not None:
+            x = x + self.bias
+        return x
+
+    def extra_repr(self) -> str:
+        return (
+            f"in_shape={self.in_shape}, out_features={self.out_features}, "
+            f"bias={self.bias is not None}"
+        )
+
+
 class Mapformer(nn.Module):
     """
     A brain-inspired topographic vision model with learned contrastive weight sharing.
@@ -271,11 +332,13 @@ class Mapformer(nn.Module):
         img_size: int = 384,
         patch_size: int = 16,
         in_chans: int = 3,
+        num_classes: int = 1000,
         embed_dim: int = 256,
         depth: int = 12,
         mlp_ratio: float = 1 / 8.0,
-        attn_drop_rate: float = 0.0,
+        drop_rate: float = 0.0,
         proj_drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
         drop_path_rate: float = 0.0,
         act_layer: Layer = nn.GELU,
         content_attn: bool = True,
@@ -285,6 +348,9 @@ class Mapformer(nn.Module):
         layerwise: bool = False,
     ):
         super().__init__()
+
+        self.num_classes = num_classes
+        self.embed_dim = embed_dim
 
         self.patch_embed = PatchEmbed(
             img_size=img_size,
@@ -318,9 +384,22 @@ class Mapformer(nn.Module):
             ]
         )
 
+        # Classifier Head
+        # Using a factorized linear head with independent spatial pooling and feature
+        # projection for each class will allow different classes to attend to different
+        # regions of the representation map. As a bonus, we'll be able to literally
+        # visualize the category informative regions for each category.
+        self.head_drop = nn.Dropout(drop_rate)
+        if num_classes > 0:
+            self.head = FactorLinear2D((num_patches, embed_dim), num_classes)
+        else:
+            self.head = nn.Identity()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.patch_embed(x)
         x = self.blocks(x)
+        x = self.head_drop(x)
+        x = self.head(x)
         return x
 
     def loss(self) -> torch.Tensor:

@@ -30,9 +30,10 @@ def test_model():
     loss = model.loss()
 
     logging.info("Output shape: %s", output.shape)
+    logging.info("Output[0, :10]: %s", output[0, :10])
     logging.info("Loss: %.6g", loss.item())
 
-    assert output.shape == (8, 576, 256)
+    assert output.shape == (8, 1000)
 
 
 if __name__ == "__main__":
