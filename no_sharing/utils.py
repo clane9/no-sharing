@@ -7,8 +7,8 @@ def distance_weights(
     height: int, in_height: Optional[int] = None, device: Optional[torch.device] = None
 ) -> torch.Tensor:
     """
-    Compute the matrix of euclidean distances between all pairs points of points on two
-    superimposed grids, possibly of different heights.
+    Compute the matrix of euclidean distances between all pairs of points on two
+    superimposed grids, possibly of different sizes.
 
     Returns a tensor shape (height^2, in_height^2).
     """
