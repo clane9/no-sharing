@@ -1,3 +1,34 @@
+"""
+Mapformer: A topographic vision model without weight sharing.
+
+Similar to modern architectures like ViT and ConvNeXt, the network consists of a
+sequence of identical blocks that perform spatial pooling/attention followed by 1x1 Mlp
+feature transformation. The major difference is that here we don't share weights
+between the columns of the feature maps. Specifically,
+
+- In `ColumnAttention`, each feature column learns an independent content query and
+  spatial receptive field bias. Given a flattened grid of feature columns `x`, shape
+  `(N, height^2, C)`, the attention map for each column is computed as::
+
+    softmax(query @ x.T + bias)
+
+  where `query` is `(height^2, C)` and `bias` is `(height^2, height^2)`.
+
+- In `ColumnMlp`, each feature column learns an independent Mlp. To conserve parameters,
+  the hidden dimension of the Mlp is much smaller than the input dimension. This
+  contrasts with modern architectures that typically expand the Mlp dimension by e.g. 4.
+  Importantly however, in this architecture columns are able to pool independent
+  features from their neighbors to boost the effective dimensionality.
+
+In addition, each block defines a `WiringCost` to penalize long-range connections in the
+attention map, as well as a contrastive `LocalInfoNCELoss` to promote smooth
+representation maps, i.e. soft weight sharing (Geoff Hinton, Robot Brains, 2022).
+
+References:
+    timm: https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py
+    convnext: https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py
+"""
+
 import math
 from typing import Callable, Optional, Tuple
 
@@ -226,7 +257,11 @@ class Block(nn.Module):
         self._attn_map: Optional[torch.Tensor] = None
         self._output: Optional[torch.Tensor] = None
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_attention: bool = False,
+    ) -> torch.Tensor:
         # Don't backprop to earlier layers
         if self.detach:
             x = x.detach()
@@ -241,6 +276,9 @@ class Block(nn.Module):
 
         self._attn_map = attn
         self._output = x
+
+        if return_attention:
+            return x, attn
         return x
 
     def loss(self) -> torch.Tensor:
@@ -364,8 +402,8 @@ class Mapformer(nn.Module):
 
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
-        self.blocks = nn.Sequential(
-            *[
+        self.blocks = nn.ModuleList(
+            [
                 Block(
                     height=height,
                     dim=embed_dim,
@@ -395,11 +433,26 @@ class Mapformer(nn.Module):
         else:
             self.head = nn.Identity()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        return_intermediates: bool = False,
+    ) -> torch.Tensor:
         x = self.patch_embed(x)
-        x = self.blocks(x)
+
+        activations = []
+        attention_maps = []
+
+        for block in self.blocks:
+            x, attn = block(x, return_attention=True)
+            activations.append(x)
+            attention_maps.append(attn)
+
         x = self.head_drop(x)
         x = self.head(x)
+
+        if return_intermediates:
+            return x, activations, attention_maps
         return x
 
     def loss(self) -> torch.Tensor:
