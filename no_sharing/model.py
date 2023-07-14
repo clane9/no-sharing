@@ -145,16 +145,7 @@ class MultiLinear(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # input: (batch_size, seq_length, in_features)
         # output: (batch_size, seq_length, out_features)
-
-        # TODO: any way to write this with fewer transposes? GPT wasn't very helpful.
-        # (sl, bs, if)
-        input = torch.transpose(input, 0, 1)
-        # (sl, if, of)
-        weight = torch.transpose(self.weight, 1, 2)
-        # (sl, bs, of)
-        output = torch.matmul(input, weight)
-        # (bs, sl, of)
-        output = torch.transpose(output, 0, 1)
+        output = torch.einsum("btc,tdc->btd", input, self.weight)
         if self.bias is not None:
             output = output + self.bias
         return output
