@@ -6,7 +6,11 @@ A brain-inspired topographic vision model without weight sharing.
 
 Popular vision models like convnets and transformers use weight sharing to conserve parameters and add inductive bias. However, strict weight sharing is biologically implausible. Here, we instead aim to *learn* to share weights by promoting local connections and smooth representation maps over a grid of feature columns.
 
-A goal of this work is to explore how topographic visual representations can emerge during learning. Two hallmarks of the primate visual system are retinotopy in early visual cortex and category selectivity in higher visual areas. Arguably, today's standard architectures are unable to fully model this transition. Strict weight sharing guarantees a uniform representation map at each layer of the network. By promoting smooth but not necessarily uniform representations, we may start to see the emergence of distinct visual pathways terminating in category selective patches.
+A goal of this work is to explore how topographic visual representations can emerge during learning. Two hallmarks of the primate visual system are retinotopy in early visual cortex and category selectivity in higher visual areas. Arguably, today's standard architectures are unable to fully model this emergent specialization. Strict weight sharing guarantees a uniform representation map at each layer of the network. By promoting smooth but not necessarily uniform representations, we may start to see regional specialization emerge.
+
+Something kind of like this, but replace time with network depth.
+
+![universe timeline](.github/universe_timeline.jpeg)
 
 ## Inspiration
 
